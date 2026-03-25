@@ -63,7 +63,7 @@ func (s *kbShareService) ShareKnowledgeBase(ctx context.Context, kbID string, or
 	}
 
 	// Verify organization exists
-	_, err = s.orgRepo.GetByID(ctx, orgID)
+	org, err := s.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
 		if errors.Is(err, repository.ErrOrganizationNotFound) {
 			return nil, ErrOrgNotFound
@@ -71,15 +71,12 @@ func (s *kbShareService) ShareKnowledgeBase(ctx context.Context, kbID string, or
 		return nil, err
 	}
 
-	// Check if user is a member of the organization and has at least editor role (viewers cannot share KBs to the org)
-	member, err := s.orgRepo.GetMember(ctx, orgID, userID)
-	if err != nil {
-		if errors.Is(err, repository.ErrOrgMemberNotFound) {
-			return nil, ErrUserNotInOrg
-		}
-		return nil, err
-	}
-	if !member.Role.HasPermission(types.OrgRoleEditor) {
+	// New governance rule:
+	// - super admin can share to any space
+	// - dept admin can only share to spaces created by themselves
+	// - normal users cannot share KBs to spaces
+	currentUser, _ := ctx.Value(types.UserContextKey).(*types.User)
+	if currentUser == nil || (!currentUser.IsSuperAdmin() && !(currentUser.IsDeptAdmin() && org.OwnerID == userID)) {
 		return nil, ErrOrgRoleCannotShare
 	}
 

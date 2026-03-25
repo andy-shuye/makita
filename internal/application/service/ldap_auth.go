@@ -184,6 +184,7 @@ func (s *userService) getOrCreateLDAPUser(ctx context.Context, profile *ldapUser
 		Avatar:       profile.Department,
 		TenantID:     createdTenant.ID,
 		IsActive:     true,
+		SystemRole:   types.SystemRoleUser,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}

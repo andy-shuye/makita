@@ -490,28 +490,12 @@ func RegisterOrganizationRoutes(r *gin.RouterGroup, orgHandler *handler.Organiza
 		orgs.POST("", orgHandler.CreateOrganization)
 		// List my organizations
 		orgs.GET("", orgHandler.ListMyOrganizations)
-		// Preview organization by invite code (without joining)
-		orgs.GET("/preview/:code", orgHandler.PreviewByInviteCode)
-		// Join organization by invite code
-		orgs.POST("/join", orgHandler.JoinByInviteCode)
-		// Submit join request (for organizations that require approval)
-		orgs.POST("/join-request", orgHandler.SubmitJoinRequest)
-		// Search searchable (discoverable) organizations
-		orgs.GET("/search", orgHandler.SearchOrganizations)
-		// Join searchable organization by ID (no invite code)
-		orgs.POST("/join-by-id", orgHandler.JoinByOrganizationID)
 		// Get organization by ID
 		orgs.GET("/:id", orgHandler.GetOrganization)
 		// Update organization
 		orgs.PUT("/:id", orgHandler.UpdateOrganization)
 		// Delete organization
 		orgs.DELETE("/:id", orgHandler.DeleteOrganization)
-		// Leave organization
-		orgs.POST("/:id/leave", orgHandler.LeaveOrganization)
-		// Request role upgrade (for existing members)
-		orgs.POST("/:id/request-upgrade", orgHandler.RequestRoleUpgrade)
-		// Generate invite code
-		orgs.POST("/:id/invite-code", orgHandler.GenerateInviteCode)
 		// Search users for invite (admin only)
 		orgs.GET("/:id/search-users", orgHandler.SearchUsersForInvite)
 		// Invite member directly (admin only)
@@ -522,10 +506,6 @@ func RegisterOrganizationRoutes(r *gin.RouterGroup, orgHandler *handler.Organiza
 		orgs.PUT("/:id/members/:user_id", orgHandler.UpdateMemberRole)
 		// Remove member
 		orgs.DELETE("/:id/members/:user_id", orgHandler.RemoveMember)
-		// List join requests (admin only)
-		orgs.GET("/:id/join-requests", orgHandler.ListJoinRequests)
-		// Review join request (admin only)
-		orgs.PUT("/:id/join-requests/:request_id/review", orgHandler.ReviewJoinRequest)
 		// List knowledge bases shared to this organization
 		orgs.GET("/:id/shares", orgHandler.ListOrgShares)
 		// List agents shared to this organization
@@ -610,10 +590,7 @@ func serveFrontendStatic(r *gin.Engine) {
 // Route:
 //   - /files?file_path=<provider://...>
 func serveFiles(r *gin.Engine) {
-	baseDir := os.Getenv("LOCAL_STORAGE_BASE_DIR")
-	if baseDir == "" {
-		baseDir = "/data/files"
-	}
+	baseDir := filesvc.ResolveLocalBaseDir("")
 	absDir, _ := filepath.Abs(baseDir)
 	if info, err := os.Stat(absDir); err != nil || !info.IsDir() {
 		if err := os.MkdirAll(absDir, 0o755); err != nil {

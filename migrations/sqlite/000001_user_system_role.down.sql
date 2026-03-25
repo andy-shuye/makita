@@ -1,0 +1,2 @@
+-- SQLite rollback for dropping a column requires table rebuild.
+-- Keep as no-op to avoid destructive rollback in production.

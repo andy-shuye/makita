@@ -28,10 +28,9 @@ func NewFileServiceFromStorageConfig(
 	}
 
 	if localBaseDir == "" {
-		localBaseDir = strings.TrimSpace(os.Getenv("LOCAL_STORAGE_BASE_DIR"))
-	}
-	if localBaseDir == "" {
-		localBaseDir = "/data/files"
+		localBaseDir = ResolveLocalBaseDir("")
+	} else {
+		localBaseDir = ResolveLocalBaseDir(localBaseDir)
 	}
 
 	switch p {

@@ -1,9 +1,18 @@
 package types
 
 import (
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+)
+
+type SystemRole string
+
+const (
+	SystemRoleSuperAdmin SystemRole = "super_admin"
+	SystemRoleDeptAdmin  SystemRole = "dept_admin"
+	SystemRoleUser       SystemRole = "user"
 )
 
 // User represents a user in the system
@@ -24,6 +33,8 @@ type User struct {
 	IsActive bool `json:"is_active"  gorm:"default:true"`
 	// Whether the user can access all tenants (cross-tenant access)
 	CanAccessAllTenants bool `json:"can_access_all_tenants" gorm:"default:false"`
+	// System-level role for org/space governance
+	SystemRole SystemRole `json:"system_role" gorm:"type:varchar(32);default:'user';index"`
 	// Creation time of the user
 	CreatedAt time.Time `json:"created_at"`
 	// Last updated time of the user
@@ -91,15 +102,16 @@ type RegisterResponse struct {
 
 // UserInfo represents user information for API responses
 type UserInfo struct {
-	ID                  string    `json:"id"`
-	Username            string    `json:"username"`
-	Email               string    `json:"email"`
-	Avatar              string    `json:"avatar"`
-	TenantID            uint64    `json:"tenant_id"`
-	IsActive            bool      `json:"is_active"`
-	CanAccessAllTenants bool      `json:"can_access_all_tenants"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                  string     `json:"id"`
+	Username            string     `json:"username"`
+	Email               string     `json:"email"`
+	Avatar              string     `json:"avatar"`
+	TenantID            uint64     `json:"tenant_id"`
+	IsActive            bool       `json:"is_active"`
+	CanAccessAllTenants bool       `json:"can_access_all_tenants"`
+	SystemRole          SystemRole `json:"system_role"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 // ToUserInfo converts User to UserInfo (without sensitive data)
@@ -112,7 +124,29 @@ func (u *User) ToUserInfo() *UserInfo {
 		TenantID:            u.TenantID,
 		IsActive:            u.IsActive,
 		CanAccessAllTenants: u.CanAccessAllTenants,
+		SystemRole:          u.SystemRole,
 		CreatedAt:           u.CreatedAt,
 		UpdatedAt:           u.UpdatedAt,
 	}
+}
+
+func (u *User) IsSuperAdmin() bool {
+	if u == nil {
+		return false
+	}
+	return u.CanAccessAllTenants || u.SystemRole == SystemRoleSuperAdmin
+}
+
+func (u *User) IsDeptAdmin() bool {
+	if u == nil {
+		return false
+	}
+	return u.SystemRole == SystemRoleDeptAdmin
+}
+
+func (u *User) Department() string {
+	if u == nil {
+		return ""
+	}
+	return strings.TrimSpace(u.Avatar)
 }
