@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -1751,11 +1752,15 @@ func (h *OrganizationHandler) InviteMember(c *gin.Context) {
 
 	orgID := c.Param("id")
 	userID := c.GetString(types.UserIDContextKey.String())
+	currentUser, _ := c.Request.Context().Value(types.UserContextKey).(*types.User)
 
-	// Check admin permission
-	isAdmin, err := h.orgService.IsOrgAdmin(ctx, orgID, userID)
-	if err != nil || !isAdmin {
-		c.Error(apperrors.NewForbiddenError("Only organization admins can invite members"))
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	if currentUser == nil || (!currentUser.IsSuperAdmin() && !(currentUser.IsDeptAdmin() && org.OwnerID == userID)) {
+		c.Error(apperrors.NewForbiddenError("Only super admin or department admin (owner) can manage members"))
 		return
 	}
 
@@ -1765,45 +1770,60 @@ func (h *OrganizationHandler) InviteMember(c *gin.Context) {
 		return
 	}
 
-	// Validate role
-	if !req.Role.IsValid() {
+	action := strings.ToLower(strings.TrimSpace(req.Action))
+	if action == "" {
+		action = "add"
+	}
+	role := req.Role
+	if role == "" {
+		role = types.OrgRoleViewer
+	}
+	if action == "add" && !role.IsValid() {
 		c.Error(apperrors.NewValidationError("Invalid role; must be viewer, editor, or admin"))
 		return
 	}
 
-	// Check if user exists
-	invitedUser, err := h.userService.GetUserByID(ctx, req.UserID)
-	if err != nil {
-		c.Error(apperrors.NewNotFoundError("User not found"))
-		return
-	}
-
-	// Check if already a member
-	_, memberErr := h.orgService.GetMember(ctx, orgID, req.UserID)
-	if memberErr == nil {
-		c.Error(apperrors.NewValidationError("User is already a member of this organization"))
-		return
-	}
-
-	// Add member
-	if err := h.orgService.AddMember(ctx, orgID, req.UserID, invitedUser.TenantID, req.Role); err != nil {
-		logger.Errorf(ctx, "Failed to add member: %v", err)
-		if errors.Is(err, service.ErrOrgMemberLimitReached) {
-			c.Error(apperrors.NewValidationError("该空间成员已满，无法添加新成员"))
+	targetUsers := make([]*types.User, 0, 8)
+	if strings.TrimSpace(req.UserID) != "" {
+		u, err := h.userService.GetUserByID(ctx, req.UserID)
+		if err != nil {
+			c.Error(apperrors.NewNotFoundError("User not found"))
 			return
 		}
-		c.Error(apperrors.NewInternalServerError("Failed to add member"))
+		targetUsers = append(targetUsers, u)
+	} else if strings.TrimSpace(req.Department) != "" {
+		users, err := h.userService.SearchUsers(ctx, req.Department, 10000)
+		if err != nil {
+			c.Error(apperrors.NewInternalServerError("Failed to query department users"))
+			return
+		}
+		for _, u := range users {
+			if strings.TrimSpace(u.Avatar) == strings.TrimSpace(req.Department) {
+				targetUsers = append(targetUsers, u)
+			}
+		}
+	} else {
+		c.Error(apperrors.NewValidationError("user_id or department is required"))
 		return
 	}
 
-	logger.Infof(ctx, "User %s invited user %s to organization %s with role %s",
-		secutils.SanitizeForLog(userID),
-		secutils.SanitizeForLog(req.UserID),
-		orgID,
-		req.Role)
+	affected := 0
+	for _, target := range targetUsers {
+		if action == "remove" {
+			_ = h.orgService.RemoveMember(ctx, orgID, target.ID, userID)
+			affected++
+			continue
+		}
+		if err := h.orgService.AddMember(ctx, orgID, target.ID, target.TenantID, role); err == nil {
+			affected++
+		}
+	}
+
+	logger.Infof(ctx, "User %s batch %s members to org %s affected=%d", secutils.SanitizeForLog(userID), action, orgID, affected)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Member added successfully",
+		"message": "Members updated successfully",
+		"count":   affected,
 	})
 }

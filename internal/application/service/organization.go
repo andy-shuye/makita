@@ -72,6 +72,13 @@ func resolveInviteExpiry(validityDays int, now time.Time) *time.Time {
 // CreateOrganization creates a new organization
 func (s *organizationService) CreateOrganization(ctx context.Context, userID string, tenantID uint64, req *types.CreateOrganizationRequest) (*types.Organization, error) {
 	logger.Infof(ctx, "Creating organization: %s by user: %s", req.Name, userID)
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !user.IsSuperAdmin() && !user.IsDeptAdmin() {
+		return nil, ErrOrgPermissionDenied
+	}
 
 	validityDays := DefaultInviteCodeValidityDays
 	if req.InviteCodeValidityDays != nil {
@@ -159,23 +166,31 @@ func (s *organizationService) GetOrganizationByInviteCode(ctx context.Context, i
 
 // ListUserOrganizations lists all organizations that a user belongs to
 func (s *organizationService) ListUserOrganizations(ctx context.Context, userID string) ([]*types.Organization, error) {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user.IsSuperAdmin() {
+		return s.orgRepo.ListAll(ctx)
+	}
+	if user.IsDeptAdmin() {
+		return s.orgRepo.ListByOwnerDepartment(ctx, user.Department())
+	}
 	return s.orgRepo.ListByUserID(ctx, userID)
 }
 
 // UpdateOrganization updates an organization
 func (s *organizationService) UpdateOrganization(ctx context.Context, id string, userID string, req *types.UpdateOrganizationRequest) (*types.Organization, error) {
-	// Check if user is admin
-	isAdmin, err := s.IsOrgAdmin(ctx, id, userID)
+	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !isAdmin {
-		return nil, ErrOrgPermissionDenied
-	}
-
 	org, err := s.orgRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !(user.IsSuperAdmin() || (user.IsDeptAdmin() && org.OwnerID == userID)) {
+		return nil, ErrOrgPermissionDenied
 	}
 
 	if req.Name != nil {
@@ -271,52 +286,21 @@ func (s *organizationService) SearchSearchableOrganizations(ctx context.Context,
 
 // JoinByOrganizationID joins a searchable organization by ID (no invite code required)
 func (s *organizationService) JoinByOrganizationID(ctx context.Context, orgID string, userID string, tenantID uint64, message string, requestedRole types.OrgMemberRole) (*types.Organization, error) {
-	org, err := s.orgRepo.GetByID(ctx, orgID)
-	if err != nil {
-		if errors.Is(err, repository.ErrOrganizationNotFound) {
-			return nil, ErrOrgNotFound
-		}
-		return nil, err
-	}
-	if !org.Searchable {
-		return nil, ErrOrgPermissionDenied // or a dedicated "org not discoverable" error
-	}
-	_, err = s.orgRepo.GetMember(ctx, orgID, userID)
-	if err == nil {
-		return org, nil // already member
-	}
-	// Validate requested role if provided
-	if requestedRole != "" && !requestedRole.IsValid() {
-		return nil, ErrInvalidRole
-	}
-	// Default to viewer if not specified
-	if requestedRole == "" {
-		requestedRole = types.OrgRoleViewer
-	}
-	if org.RequireApproval {
-		_, err = s.SubmitJoinRequest(ctx, orgID, userID, tenantID, message, requestedRole)
-		if err != nil {
-			return nil, err
-		}
-		return org, nil
-	}
-	// Direct join using invite code flow logic (add member)
-	_, err = s.JoinByInviteCode(ctx, org.InviteCode, userID, tenantID)
-	if err != nil {
-		return nil, err
-	}
-	return org, nil
+	return nil, ErrOrgPermissionDenied
 }
 
 // DeleteOrganization deletes an organization
 func (s *organizationService) DeleteOrganization(ctx context.Context, id string, userID string) error {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
 	org, err := s.orgRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// Only owner can delete organization
-	if org.OwnerID != userID {
+	if !(user.IsSuperAdmin() || (user.IsDeptAdmin() && org.OwnerID == userID)) {
 		return ErrOrgPermissionDenied
 	}
 
@@ -472,61 +456,7 @@ func (s *organizationService) GenerateInviteCode(ctx context.Context, orgID stri
 
 // JoinByInviteCode allows a user to join an organization via invite code
 func (s *organizationService) JoinByInviteCode(ctx context.Context, inviteCode string, userID string, tenantID uint64) (*types.Organization, error) {
-	org, err := s.orgRepo.GetByInviteCode(ctx, inviteCode)
-	if err != nil {
-		if errors.Is(err, repository.ErrInviteCodeNotFound) {
-			return nil, ErrOrgNotFound
-		}
-		if errors.Is(err, repository.ErrInviteCodeExpired) {
-			return nil, ErrInviteCodeExpired
-		}
-		return nil, err
-	}
-
-	// check if the organization need approval
-	if org.RequireApproval {
-		logger.Infof(ctx, "Organization %s requires approval", org.ID)
-		return nil, ErrOrgPermissionDenied
-	}
-
-	// Check if user is already a member
-	_, err = s.orgRepo.GetMember(ctx, org.ID, userID)
-	if err == nil {
-		// User is already a member, just return the organization
-		return org, nil
-	}
-	if !errors.Is(err, repository.ErrOrgMemberNotFound) {
-		return nil, err
-	}
-
-	// Check member limit (0 = unlimited)
-	if org.MemberLimit > 0 {
-		count, errCount := s.orgRepo.CountMembers(ctx, org.ID)
-		if errCount != nil {
-			return nil, errCount
-		}
-		if count >= int64(org.MemberLimit) {
-			return nil, ErrOrgMemberLimitReached
-		}
-	}
-
-	// Add user as viewer by default
-	member := &types.OrganizationMember{
-		ID:             uuid.New().String(),
-		OrganizationID: org.ID,
-		UserID:         userID,
-		TenantID:       tenantID,
-		Role:           types.OrgRoleViewer,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	if err := s.orgRepo.AddMember(ctx, member); err != nil {
-		return nil, err
-	}
-
-	logger.Infof(ctx, "User %s joined organization %s via invite code", userID, org.ID)
-	return org, nil
+	return nil, ErrOrgPermissionDenied
 }
 
 // IsOrgAdmin checks if a user is an admin of an organization
@@ -573,56 +503,7 @@ var (
 
 // SubmitJoinRequest submits a request to join an organization
 func (s *organizationService) SubmitJoinRequest(ctx context.Context, orgID string, userID string, tenantID uint64, message string, requestedRole types.OrgMemberRole) (*types.OrganizationJoinRequest, error) {
-	logger.Infof(ctx, "User %s submitting join request for organization %s", userID, orgID)
-
-	// Check if there's already a pending join request
-	existing, err := s.orgRepo.GetPendingRequestByType(ctx, orgID, userID, types.JoinRequestTypeJoin)
-	if err == nil && existing != nil {
-		return nil, ErrPendingRequestExists
-	}
-
-	// Reject if organization is already at member limit
-	org, err := s.orgRepo.GetByID(ctx, orgID)
-	if err != nil {
-		if errors.Is(err, repository.ErrOrganizationNotFound) {
-			return nil, ErrOrgNotFound
-		}
-		return nil, err
-	}
-	if org.MemberLimit > 0 {
-		count, errCount := s.orgRepo.CountMembers(ctx, orgID)
-		if errCount != nil {
-			return nil, errCount
-		}
-		if count >= int64(org.MemberLimit) {
-			return nil, ErrOrgMemberLimitReached
-		}
-	}
-
-	// Default to viewer if role is empty or invalid
-	if requestedRole == "" || !requestedRole.IsValid() {
-		requestedRole = types.OrgRoleViewer
-	}
-
-	request := &types.OrganizationJoinRequest{
-		ID:             uuid.New().String(),
-		OrganizationID: orgID,
-		UserID:         userID,
-		TenantID:       tenantID,
-		RequestType:    types.JoinRequestTypeJoin,
-		RequestedRole:  requestedRole,
-		Status:         types.JoinRequestStatusPending,
-		Message:        message,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-
-	if err := s.orgRepo.CreateJoinRequest(ctx, request); err != nil {
-		return nil, err
-	}
-
-	logger.Infof(ctx, "Join request %s created for organization %s by user %s", request.ID, orgID, userID)
-	return request, nil
+	return nil, ErrOrgPermissionDenied
 }
 
 // ListJoinRequests lists all join requests for an organization

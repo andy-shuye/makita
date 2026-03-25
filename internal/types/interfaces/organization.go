@@ -53,6 +53,8 @@ type OrganizationRepository interface {
 	GetByID(ctx context.Context, id string) (*types.Organization, error)
 	GetByInviteCode(ctx context.Context, inviteCode string) (*types.Organization, error)
 	ListByUserID(ctx context.Context, userID string) ([]*types.Organization, error)
+	ListAll(ctx context.Context) ([]*types.Organization, error)
+	ListByOwnerDepartment(ctx context.Context, department string) ([]*types.Organization, error)
 	ListSearchable(ctx context.Context, query string, limit int) ([]*types.Organization, error)
 	Update(ctx context.Context, org *types.Organization) error
 	Delete(ctx context.Context, id string) error

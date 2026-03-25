@@ -77,6 +77,28 @@ func (r *organizationRepository) ListByUserID(ctx context.Context, userID string
 	return orgs, nil
 }
 
+func (r *organizationRepository) ListAll(ctx context.Context) ([]*types.Organization, error) {
+	var orgs []*types.Organization
+	if err := r.db.WithContext(ctx).Order("organizations.created_at DESC").Find(&orgs).Error; err != nil {
+		return nil, err
+	}
+	return orgs, nil
+}
+
+func (r *organizationRepository) ListByOwnerDepartment(ctx context.Context, department string) ([]*types.Organization, error) {
+	var orgs []*types.Organization
+	err := r.db.WithContext(ctx).
+		Table("organizations").
+		Joins("JOIN users ON users.id = organizations.owner_id").
+		Where("users.avatar = ?", department).
+		Order("organizations.created_at DESC").
+		Find(&orgs).Error
+	if err != nil {
+		return nil, err
+	}
+	return orgs, nil
+}
+
 // ListSearchable lists organizations that are searchable (open for discovery), optionally filtered by name/description/ID
 func (r *organizationRepository) ListSearchable(ctx context.Context, query string, limit int) ([]*types.Organization, error) {
 	if limit <= 0 {

@@ -528,10 +528,7 @@ func initFileService(cfg *config.Config) (interfaces.FileService, error) {
 			os.Getenv("TOS_TEMP_REGION"),      // 可选：临时桶 region，默认与主桶相同
 		)
 	case "local":
-		baseDir := os.Getenv("LOCAL_STORAGE_BASE_DIR")
-		if baseDir == "" {
-			baseDir = "/data/files"
-		}
+		baseDir := file.ResolveLocalBaseDir("")
 		return file.NewLocalFileService(baseDir), nil
 	case "dummy":
 		return file.NewDummyFileService(), nil

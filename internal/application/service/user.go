@@ -113,6 +113,7 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 		PasswordHash: string(hashedPassword),
 		TenantID:     createdTenant.ID,
 		IsActive:     true,
+		SystemRole:   types.SystemRoleUser,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
