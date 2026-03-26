@@ -1,6 +1,7 @@
 // src/utils/request.js
 import axios from "axios";
 import { generateRandomString } from "./index";
+import { DialogPlugin } from 'tdesign-vue-next';
 
 // API基础URL
 const BASE_URL = import.meta.env.VITE_IS_DOCKER ? "" : "http://localhost:8080";
@@ -53,6 +54,7 @@ instance.interceptors.request.use(
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: Function; reject: Function }> = [];
 let hasRedirectedOn401 = false;
+let showingPermissionDialog = false;
 
 // 处理队列中的请求
 const processQueue = (error: any, token: string | null = null) => {
@@ -176,6 +178,18 @@ instance.interceptors.response.use(
     }
 
     const { status, data } = error.response;
+    if (status === 403 && !showingPermissionDialog) {
+      showingPermissionDialog = true;
+      DialogPlugin.alert({
+        header: '无权限',
+        body: '您没有权限执行当前操作，请联系管理员分配权限。',
+        confirmBtn: '我知道了',
+        closeOnOverlayClick: true,
+        onClose: () => {
+          showingPermissionDialog = false;
+        }
+      });
+    }
     // 将HTTP状态码一并抛出，方便上层判断401等场景
     // 后端返回格式: { success: false, error: { code, message, details } }
     // 提取 error.message 作为顶层 message，方便前端使用 error?.message 获取

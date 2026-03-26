@@ -13,17 +13,6 @@
           <div class="title-row">
             <h2>{{ $t('organization.title') }}</h2>
             <div class="header-actions">
-              <t-tooltip :content="$t('organization.joinOrg')" placement="bottom">
-                <t-button
-                  variant="text"
-                  theme="default"
-                  size="small"
-                  class="header-action-btn"
-                  @click="handleJoinOrganization"
-                >
-                  <template #icon><t-icon name="enter" size="16px" /></template>
-                </t-button>
-              </t-tooltip>
               <t-tooltip :content="$t('organization.createOrg')" placement="bottom">
                 <t-button
                   variant="text"
@@ -156,10 +145,6 @@
       <span class="empty-txt">{{ emptyStateTitle }}</span>
       <span class="empty-desc">{{ emptyStateDesc }}</span>
       <div class="empty-state-actions">
-        <t-button theme="default" variant="outline" class="org-join-btn" @click="handleJoinOrganization">
-          <template #icon><t-icon name="enter" /></template>
-          {{ $t('organization.joinOrg') }}
-        </t-button>
         <t-button class="org-create-btn" @click="handleCreateOrganization">
           <template #icon><img src="@/assets/img/organization-green.svg" class="org-create-icon" alt="" aria-hidden="true" /></template>
           {{ $t('organization.createOrg') }}
@@ -225,7 +210,7 @@
     </t-dialog>
 
     <!-- 加入组织 / 邀请预览弹框（菜单与邀请链接共用同一弹框） -->
-    <Teleport to="body">
+    <Teleport to="body" v-if="false">
       <Transition name="modal">
         <div v-if="showInvitePreview" class="invite-preview-overlay" @click.self="closeInvitePreview">
           <div class="invite-preview-modal">

@@ -118,118 +118,15 @@
                       </div>
                     </div>
 
-                    <!-- 邀请成员 (仅管理员可见) -->
+                    <!-- 成员容量设置 (仅管理员可见) -->
                     <div v-if="isAdmin && orgId" class="setting-row setting-row-vertical">
                       <div class="setting-info full-width">
-                        <label>{{ $t('organization.settings.inviteMembers') }}</label>
-                        <p class="desc">{{ $t('organization.settings.inviteMembersDesc') }}</p>
+                        <label>{{ $t('organization.settings.memberLimit') }}</label>
+                        <p class="desc">{{ $t('organization.settings.memberLimitDesc') }}</p>
                       </div>
                       <div class="setting-control full-width">
                         <div class="invite-card">
-                          <!-- 邀请码 -->
                           <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="qrcode" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.inviteCode') }}</span>
-                            </div>
-                            <div class="invite-code-box">
-                              <span class="invite-code-value">{{ inviteCode }}</span>
-                              <div class="invite-code-actions">
-                                <t-tooltip :content="$t('common.copy')">
-                                  <t-button variant="text" size="small" @click="copyInviteCode">
-                                    <t-icon name="file-copy" />
-                                  </t-button>
-                                </t-tooltip>
-                                <t-tooltip :content="$t('organization.refreshInviteCode')">
-                                  <t-button variant="text" size="small" @click="refreshInviteCode" :loading="refreshingCode">
-                                    <t-icon name="refresh" />
-                                  </t-button>
-                                </t-tooltip>
-                              </div>
-                            </div>
-                            <p v-if="inviteCode" class="invite-remaining">{{ remainingValidityText }}</p>
-                          </div>
-                          
-                          <div class="invite-divider"></div>
-                          
-                          <!-- 邀请链接有效期 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="time" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.inviteLinkValidity') }}</span>
-                            </div>
-                            <p class="invite-validity-desc">{{ $t('organization.settings.inviteLinkValidityDesc') }}</p>
-                            <t-select
-                              v-model="formData.invite_code_validity_days"
-                              :options="inviteValidityOptions"
-                              size="small"
-                              class="invite-validity-select"
-                              :disabled="!isAdmin"
-                              @change="handleValidityChange"
-                            />
-                          </div>
-                          
-                          <div class="invite-divider"></div>
-                          
-                          <!-- 邀请链接 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="link" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.inviteLink') }}</span>
-                            </div>
-                            <div class="invite-link-box">
-                              <span class="invite-link-value">{{ inviteLink }}</span>
-                              <t-tooltip :content="$t('common.copy')">
-                                <t-button variant="text" size="small" @click="copyInviteLink">
-                                  <t-icon name="file-copy" />
-                                </t-button>
-                              </t-tooltip>
-                            </div>
-                          </div>
-                          
-                          <div class="invite-divider"></div>
-                          
-                          <!-- 需要审核开关 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="check-circle" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.requireApproval') }}</span>
-                            </div>
-                            <div class="approval-toggle">
-                              <t-switch 
-                                v-model="formData.require_approval" 
-                                @change="handleApprovalToggle"
-                              />
-                              <span class="approval-desc">{{ $t('organization.settings.requireApprovalDesc') }}</span>
-                            </div>
-                          </div>
-                          
-                          <div class="invite-divider"></div>
-                          
-                          <!-- 开放可被搜索 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="search" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.searchable') }}</span>
-                            </div>
-                            <div class="approval-toggle">
-                              <t-switch 
-                                v-model="formData.searchable" 
-                                @change="handleSearchableToggle"
-                              />
-                              <span class="approval-desc">{{ $t('organization.settings.searchableDesc') }}</span>
-                            </div>
-                          </div>
-                          
-                          <div class="invite-divider"></div>
-                          
-                          <!-- 成员人数上限 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="user-add" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.memberLimit') }}</span>
-                            </div>
-                            <p class="invite-validity-desc">{{ $t('organization.settings.memberLimitDesc') }}</p>
                             <div class="member-limit-input-row">
                               <t-input-number
                                 v-model="formData.member_limit"
@@ -400,7 +297,7 @@
                 </div>
 
                 <!-- 加入申请（待审核） -->
-                <div v-show="currentSection === 'joinRequests'" class="section">
+                <div v-if="false" v-show="currentSection === 'joinRequests'" class="section">
                   <div class="section-header">
                     <h2>{{ $t('organization.settings.joinRequests') }}</h2>
                     <p class="section-description">{{ $t('organization.settings.joinRequestsDesc') }}</p>
@@ -699,7 +596,7 @@
     <t-dialog
       v-model:visible="showAddMemberDialog"
       :header="$t('organization.addMember.dialogTitle')"
-      :confirm-btn="{ content: $t('organization.addMember.confirmBtn'), loading: addMemberSubmitting, disabled: !selectedUser }"
+      :confirm-btn="{ content: addMemberAction === 'add' ? $t('organization.addMember.confirmBtn') : $t('common.delete'), loading: addMemberSubmitting, disabled: !canSubmitMemberAction }"
       :cancel-btn="$t('common.cancel')"
       @confirm="handleAddMember"
       @close="resetAddMemberDialog"
@@ -707,8 +604,24 @@
     >
       <div class="add-member-dialog">
         <p class="add-member-tip">{{ $t('organization.addMember.tip') }}</p>
-        
+
         <div class="add-member-field">
+          <label>操作</label>
+          <t-radio-group v-model="addMemberAction">
+            <t-radio-button value="add">添加</t-radio-button>
+            <t-radio-button value="remove">删除</t-radio-button>
+          </t-radio-group>
+        </div>
+
+        <div class="add-member-field">
+          <label>对象</label>
+          <t-radio-group v-model="memberTargetType">
+            <t-radio-button value="user">单个成员</t-radio-button>
+            <t-radio-button value="department">整个部门</t-radio-button>
+          </t-radio-group>
+        </div>
+        
+        <div v-if="memberTargetType === 'user'" class="add-member-field">
           <label>{{ $t('organization.addMember.searchUser') }}</label>
           <t-select
             v-model="selectedUser"
@@ -723,7 +636,16 @@
           <p class="field-hint">{{ $t('organization.addMember.searchHint') }}</p>
         </div>
 
-        <div class="add-member-field">
+        <div v-else class="add-member-field">
+          <label>部门（users.avatar）</label>
+          <t-input
+            v-model="selectedDepartment"
+            placeholder="请输入部门名称（如：研发部）"
+            clearable
+          />
+        </div>
+
+        <div v-if="memberTargetType === 'user' && addMemberAction === 'add'" class="add-member-field">
           <label>{{ $t('organization.addMember.selectRole') }}</label>
           <t-select v-model="addMemberRole" :options="addMemberRoleOptions" />
         </div>
@@ -743,7 +665,6 @@ import {
   updateOrganization,
   updateMemberRole,
   removeMember,
-  generateInviteCode,
   listOrgShares,
   listOrgAgentShares,
   listJoinRequests,
@@ -800,9 +721,6 @@ const sharesLoading = ref(false)
 const membersLoading = ref(false)
 const memberSearchQuery = ref('')
 const submitting = ref(false)
-const refreshingCode = ref(false)
-const inviteCode = ref('')
-const inviteCodeExpiresAt = ref<string | null>(null)
 const showRemoveDialog = ref(false)
 const removingMember = ref<OrganizationMember | null>(null)
 const showUpgradeDialog = ref(false)
@@ -819,6 +737,9 @@ const addMemberSubmitting = ref(false)
 const userSearchLoading = ref(false)
 const userSearchResults = ref<{ id: string; username: string; email: string; avatar?: string }[]>([])
 const selectedUser = ref<string>('')
+const selectedDepartment = ref('')
+const addMemberAction = ref<'add' | 'remove'>('add')
+const memberTargetType = ref<'user' | 'department'>('user')
 const addMemberRole = ref<'admin' | 'editor' | 'viewer'>('viewer')
 
 const formData = ref({
@@ -909,15 +830,6 @@ const navItems = computed(() => {
   // 只有在编辑已有组织时才显示成员管理、加入申请（仅管理员）、共享知识库
   if (props.orgId && !isCreateMode.value) {
     items.push({ key: 'members', icon: 'user', label: t('organization.manageMembers') })
-    if (isAdmin.value) {
-      const pendingCount = orgInfo.value?.pending_join_request_count ?? 0
-      items.push({
-        key: 'joinRequests',
-        icon: 'user-add',
-        label: t('organization.settings.joinRequests'),
-        badge: pendingCount > 0 ? pendingCount : undefined
-      })
-    }
     items.push({
       key: 'sharedKb',
       icon: 'folder-open',
@@ -949,27 +861,11 @@ const filteredMembers = computed(() => {
   )
 })
 
-const inviteLink = computed(() => {
-  if (!inviteCode.value) return ''
-  return `${window.location.origin}/join?code=${inviteCode.value}`
-})
-
-const inviteValidityOptions = computed(() => [
-  { label: t('organization.settings.validity1Day'), value: 1 },
-  { label: t('organization.settings.validity7Days'), value: 7 },
-  { label: t('organization.settings.validity30Days'), value: 30 },
-  { label: t('organization.settings.validityNever'), value: 0 }
-])
-
-const remainingValidityText = computed(() => {
-  const at = inviteCodeExpiresAt.value
-  if (!at) return t('organization.settings.remainingValidityNever')
-  const exp = new Date(at)
-  const now = new Date()
-  if (exp.getTime() <= now.getTime()) return t('organization.settings.remainingValidityExpired')
-  const days = Math.ceil((exp.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
-  return t('organization.settings.remainingValidity', { n: days })
-})
+const canSubmitMemberAction = computed(() => (
+  memberTargetType.value === 'department'
+    ? !!selectedDepartment.value.trim()
+    : !!selectedUser.value
+))
 
 // Methods
 const handleClose = () => {
@@ -993,8 +889,6 @@ const fetchOrgDetail = async () => {
         invite_code_validity_days: typeof validity === 'number' ? validity : 7,
         member_limit: typeof memberLimit === 'number' && memberLimit >= 0 ? memberLimit : 50
       }
-      inviteCode.value = res.data.invite_code || ''
-      inviteCodeExpiresAt.value = res.data.invite_code_expires_at ?? null
       // 初始化是否有待处理的升级申请
       hasPendingUpgrade.value = res.data.has_pending_upgrade || false
     }
@@ -1052,7 +946,7 @@ const orgRoleOptions = [
 ]
 const assignRoleMap = ref<Record<string, 'viewer' | 'editor' | 'admin'>>({})
 
-function roleLabel(role: string) {
+function roleLabel(role?: string) {
   if (role === 'admin') return t('organization.role.admin')
   if (role === 'editor') return t('organization.role.editor')
   return t('organization.role.viewer')
@@ -1262,16 +1156,16 @@ const handleUserSearch = (query: string) => {
 
 // 添加成员：提交
 const handleAddMember = async () => {
-  if (!props.orgId || !selectedUser.value) return
+  if (!props.orgId || !canSubmitMemberAction.value) return
   
   addMemberSubmitting.value = true
   try {
-    const res = await inviteMember(props.orgId, {
-      user_id: selectedUser.value,
-      role: addMemberRole.value
-    })
+    const payload = memberTargetType.value === 'department'
+      ? { department: selectedDepartment.value.trim(), action: addMemberAction.value }
+      : { user_id: selectedUser.value, action: addMemberAction.value, role: addMemberRole.value }
+    const res = await inviteMember(props.orgId, payload)
     if (res.success) {
-      MessagePlugin.success(t('organization.addMember.success'))
+      MessagePlugin.success(addMemberAction.value === 'add' ? t('organization.addMember.success') : t('organization.memberRemoved'))
       showAddMemberDialog.value = false
       resetAddMemberDialog()
       fetchMembers() // 刷新成员列表
@@ -1288,126 +1182,11 @@ const handleAddMember = async () => {
 // 重置添加成员弹窗
 const resetAddMemberDialog = () => {
   selectedUser.value = ''
+  selectedDepartment.value = ''
+  addMemberAction.value = 'add'
+  memberTargetType.value = 'user'
   addMemberRole.value = 'viewer'
   userSearchResults.value = []
-}
-
-const fallbackCopyText = (text: string) => {
-  const textArea = document.createElement('textarea')
-  textArea.value = text
-  textArea.style.position = 'fixed'
-  textArea.style.opacity = '0'
-  document.body.appendChild(textArea)
-  textArea.select()
-  document.execCommand('copy')
-  document.body.removeChild(textArea)
-}
-
-const copyInviteCode = async () => {
-  if (inviteCode.value) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(inviteCode.value)
-      } else {
-        fallbackCopyText(inviteCode.value)
-      }
-      MessagePlugin.success(t('common.copied'))
-    } catch {
-      fallbackCopyText(inviteCode.value)
-      MessagePlugin.success(t('common.copied'))
-    }
-  }
-}
-
-const copyInviteLink = async () => {
-  if (inviteLink.value) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(inviteLink.value)
-      } else {
-        fallbackCopyText(inviteLink.value)
-      }
-      MessagePlugin.success(t('common.copied'))
-    } catch {
-      fallbackCopyText(inviteLink.value)
-      MessagePlugin.success(t('common.copied'))
-    }
-  }
-}
-
-const refreshInviteCode = async () => {
-  if (!props.orgId) return
-  refreshingCode.value = true
-  try {
-    const res = await generateInviteCode(props.orgId) as any
-    if (res.success) {
-      inviteCode.value = res.invite_code || (res as any).data?.invite_code
-      MessagePlugin.success(t('organization.inviteCodeRefreshed'))
-      await fetchOrgDetail()
-    } else {
-      MessagePlugin.error(res.message || t('organization.inviteCodeRefreshFailed'))
-    }
-  } catch (error: any) {
-    MessagePlugin.error(error?.message || t('organization.inviteCodeRefreshFailed'))
-  } finally {
-    refreshingCode.value = false
-  }
-}
-
-const handleValidityChange = async (value: number) => {
-  if (!props.orgId) return
-  try {
-    const res = await updateOrganization(props.orgId, { invite_code_validity_days: value })
-    if (res.success) {
-      MessagePlugin.success(t('common.saveSuccess'))
-    } else {
-      formData.value.invite_code_validity_days = orgInfo.value?.invite_code_validity_days ?? 7
-      MessagePlugin.error(res.message || t('common.saveFailed'))
-    }
-  } catch (error: any) {
-    formData.value.invite_code_validity_days = orgInfo.value?.invite_code_validity_days ?? 7
-    MessagePlugin.error(error?.message || t('common.saveFailed'))
-  }
-}
-
-// 切换审核开关时立即保存
-const handleApprovalToggle = async (value: boolean) => {
-  if (!props.orgId) return
-  try {
-    const res = await updateOrganization(props.orgId, {
-      require_approval: value
-    })
-    if (res.success) {
-      MessagePlugin.success(t('common.saveSuccess'))
-    } else {
-      // 回滚
-      formData.value.require_approval = !value
-      MessagePlugin.error(res.message || t('common.saveFailed'))
-    }
-  } catch (error: any) {
-    // 回滚
-    formData.value.require_approval = !value
-    MessagePlugin.error(error?.message || t('common.saveFailed'))
-  }
-}
-
-// 切换开放可被搜索时立即保存
-const handleSearchableToggle = async (value: boolean) => {
-  if (!props.orgId) return
-  try {
-    const res = await updateOrganization(props.orgId, {
-      searchable: value
-    })
-    if (res.success) {
-      MessagePlugin.success(t('common.saveSuccess'))
-    } else {
-      formData.value.searchable = !value
-      MessagePlugin.error(res.message || t('common.saveFailed'))
-    }
-  } catch (error: any) {
-    formData.value.searchable = !value
-    MessagePlugin.error(error?.message || t('common.saveFailed'))
-  }
 }
 
 const handleShareClick = (share: KnowledgeBaseShare) => {
@@ -1546,8 +1325,6 @@ watch(() => props.visible, (newVal) => {
       orgInfo.value = null
       members.value = []
       sharedKnowledgeBases.value = []
-      inviteCode.value = ''
-      inviteCodeExpiresAt.value = null
     } else if (props.orgId) {
       fetchOrgDetail()
       fetchMembers()

@@ -213,8 +213,10 @@ export interface RequestRoleUpgradeRequest {
 }
 
 export interface InviteMemberRequest {
-  user_id: string // User ID to invite
-  role: 'admin' | 'editor' | 'viewer' // Role to assign
+  user_id?: string // User ID to invite/remove
+  department?: string // Department name (stored in users.avatar)
+  role?: 'admin' | 'editor' | 'viewer' // Role to assign when adding
+  action?: 'add' | 'remove' // add or remove
 }
 
 export interface UserSearchResult {
