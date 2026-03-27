@@ -699,7 +699,7 @@
     <t-dialog
       v-model:visible="showAddMemberDialog"
       :header="$t('organization.addMember.dialogTitle')"
-      :confirm-btn="{ content: $t('organization.addMember.confirmBtn'), loading: addMemberSubmitting, disabled: !selectedUser }"
+      :confirm-btn="{ content: $t('organization.addMember.confirmBtn'), loading: addMemberSubmitting, disabled: !selectedUser && !batchDepartment }"
       :cancel-btn="$t('common.cancel')"
       @confirm="handleAddMember"
       @close="resetAddMemberDialog"
@@ -721,6 +721,15 @@
             :options="userSearchOptions"
           />
           <p class="field-hint">{{ $t('organization.addMember.searchHint') }}</p>
+        </div>
+
+        <div class="add-member-field">
+          <label>按部门批量操作</label>
+          <div class="batch-row">
+            <t-input v-model="batchDepartment" placeholder="请输入部门名称（来源于用户 avatar 字段）" clearable />
+            <t-select v-model="batchAction" :options="batchActionOptions" style="width: 120px" />
+          </div>
+          <p class="field-hint">支持按部门批量添加或移除成员。</p>
         </div>
 
         <div class="add-member-field">
@@ -820,6 +829,8 @@ const userSearchLoading = ref(false)
 const userSearchResults = ref<{ id: string; username: string; email: string; avatar?: string }[]>([])
 const selectedUser = ref<string>('')
 const addMemberRole = ref<'admin' | 'editor' | 'viewer'>('viewer')
+const batchDepartment = ref('')
+const batchAction = ref<'add' | 'remove'>('add')
 
 const formData = ref({
   name: '',
@@ -887,6 +898,11 @@ const addMemberRoleOptions = computed(() => [
   { label: t('organization.role.viewer'), value: 'viewer' },
   { label: t('organization.role.editor'), value: 'editor' },
   { label: t('organization.role.admin'), value: 'admin' },
+])
+
+const batchActionOptions = computed(() => [
+  { label: '批量添加', value: 'add' },
+  { label: '批量移除', value: 'remove' },
 ])
 
 // 用户搜索选项
@@ -1242,6 +1258,8 @@ const handleUserSearch = (query: string) => {
   }
   if (!query || query.length < 2) {
     userSearchResults.value = []
+  batchDepartment.value = ''
+  batchAction.value = 'add'
     return
   }
   userSearchTimer = setTimeout(async () => {
@@ -1262,16 +1280,20 @@ const handleUserSearch = (query: string) => {
 
 // 添加成员：提交
 const handleAddMember = async () => {
-  if (!props.orgId || !selectedUser.value) return
-  
+  if (!props.orgId) return
+  if (!selectedUser.value && !batchDepartment.value.trim()) {
+    MessagePlugin.warning('请选择成员或输入部门')
+    return
+  }
+
   addMemberSubmitting.value = true
   try {
-    const res = await inviteMember(props.orgId, {
-      user_id: selectedUser.value,
-      role: addMemberRole.value
-    })
+    const payload = batchDepartment.value.trim()
+      ? { department: batchDepartment.value.trim(), action: batchAction.value, role: addMemberRole.value }
+      : { user_id: selectedUser.value, action: 'add' as const, role: addMemberRole.value }
+    const res = await inviteMember(props.orgId, payload)
     if (res.success) {
-      MessagePlugin.success(t('organization.addMember.success'))
+      MessagePlugin.success(batchDepartment.value.trim() ? '批量成员操作成功' : t('organization.addMember.success'))
       showAddMemberDialog.value = false
       resetAddMemberDialog()
       fetchMembers() // 刷新成员列表
@@ -1290,6 +1312,8 @@ const resetAddMemberDialog = () => {
   selectedUser.value = ''
   addMemberRole.value = 'viewer'
   userSearchResults.value = []
+  batchDepartment.value = ''
+  batchAction.value = 'add'
 }
 
 const fallbackCopyText = (text: string) => {
