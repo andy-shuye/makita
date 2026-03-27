@@ -16,6 +16,7 @@ export interface LoginResponse {
     avatar?: string
     tenant_id: number
     can_access_all_tenants?: boolean
+    system_role?: 'super_admin' | 'dept_admin' | 'user'
     is_active: boolean
     created_at: string
     updated_at: string
@@ -68,6 +69,7 @@ export interface UserInfo {
   avatar?: string
   tenant_id: string
   can_access_all_tenants?: boolean
+  system_role?: 'super_admin' | 'dept_admin' | 'user'
   created_at: string
   updated_at: string
 }
