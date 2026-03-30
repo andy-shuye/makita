@@ -36,8 +36,8 @@ export function useStream() {
     isLoading.value = true;
 
     // 获取API配置
-    const apiUrl = import.meta.env.VITE_IS_DOCKER ? "" : "http://localhost:8080";
-    
+    //const apiUrl = import.meta.env.VITE_IS_DOCKER ? "" : "http://localhost:8080";
+    const apiUrl = "";
     // 获取JWT Token
     const token = localStorage.getItem('weknora_token');
     if (!token) {
