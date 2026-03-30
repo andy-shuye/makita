@@ -101,7 +101,7 @@
               <label>自建端点</label>
               <t-input
                 v-model="config.mineru_endpoint"
-                placeholder="如 https://your-mineru.example.com"
+                placeholder="如 http://192.168.40.186:8000（不要带 /file_parse）"
                 clearable
               />
             </div>
