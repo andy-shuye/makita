@@ -105,17 +105,17 @@
                 </div>
 
                 <!-- 系统信息 -->
-                <div v-if="currentSection === 'system'" class="section">
+                <div v-if="isSuperAdmin && currentSection === 'system'" class="section">
                   <SystemInfo />
                 </div>
 
                 <!-- 租户信息 -->
-                <div v-if="currentSection === 'tenant'" class="section">
+                <div v-if="isSuperAdmin && currentSection === 'tenant'" class="section">
                   <TenantInfo />
                 </div>
 
                 <!-- API 信息 -->
-                <div v-if="currentSection === 'api'" class="section">
+                <div v-if="isSuperAdmin && currentSection === 'api'" class="section">
                   <ApiInfo />
                 </div>
 
@@ -137,6 +137,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUIStore } from '@/stores/ui'
 import { useI18n } from 'vue-i18n'
+import { useAuthStore } from '@/stores/auth'
 import SystemInfo from './SystemInfo.vue'
 import TenantInfo from './TenantInfo.vue'
 import ApiInfo from './ApiInfo.vue'
@@ -152,12 +153,16 @@ const route = useRoute()
 const router = useRouter()
 const uiStore = useUIStore()
 const { t } = useI18n()
+const authStore = useAuthStore()
+
+const isSuperAdmin = computed(() => authStore.user?.system_role === 'super_admin' || authStore.user?.can_access_all_tenants === true)
 
 const currentSection = ref<string>('general')
 const currentSubSection = ref<string>('')
 const expandedMenus = ref<string[]>([])
 
-const navItems = computed(() => [
+const navItems = computed(() => {
+  const base = [
   { key: 'general', icon: 'setting', label: t('general.title') },
   { 
     key: 'models', 
@@ -196,10 +201,16 @@ const navItems = computed(() => [
     ]
   },
   { key: 'mcp', icon: 'tools', label: t('settings.mcpService') },
-  { key: 'system', icon: 'info-circle', label: t('settings.systemSettings') },
-  { key: 'tenant', icon: 'user-circle', label: t('settings.tenantInfo') },
-  { key: 'api', icon: 'secured', label: t('settings.apiInfo') }
-])
+  ] as any[]
+  if (isSuperAdmin.value) {
+    base.push(
+      { key: 'system', icon: 'info-circle', label: t('settings.systemSettings') },
+      { key: 'tenant', icon: 'user-circle', label: t('settings.tenantInfo') },
+      { key: 'api', icon: 'secured', label: t('settings.apiInfo') },
+    )
+  }
+  return base
+})
 
 // 导航项点击处理
 const handleNavClick = (item: any) => {
@@ -269,6 +280,15 @@ watch(() => uiStore.settingsInitialSection, (section) => {
     } else {
       currentSubSection.value = ''
     }
+  }
+}, { immediate: true })
+
+
+watch([navItems, isSuperAdmin], () => {
+  const keys = navItems.value.map((i: any) => i.key)
+  if (!keys.includes(currentSection.value)) {
+    currentSection.value = 'general'
+    currentSubSection.value = ''
   }
 }, { immediate: true })
 

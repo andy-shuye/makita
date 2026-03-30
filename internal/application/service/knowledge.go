@@ -129,12 +129,19 @@ func NewKnowledgeService(
 // getParserEngineOverridesFromContext returns parser engine overrides from tenant in context (e.g. MinerU endpoint, API key).
 // Used when building document ReadRequest so UI-configured values take precedence over env.
 func (s *knowledgeService) getParserEngineOverridesFromContext(ctx context.Context) map[string]string {
+	overrides := map[string]string{
+		"mineru_endpoint": "http://192.168.40.186:8000",
+		"mineru_model":    "pipeline",
+		"mineru_language": "ch",
+	}
 	if v := ctx.Value(types.TenantInfoContextKey); v != nil {
 		if tenant, ok := v.(*types.Tenant); ok && tenant != nil {
-			return tenant.ParserEngineConfig.ToOverridesMap()
+			for k, val := range tenant.ParserEngineConfig.ToOverridesMap() {
+				overrides[k] = val
+			}
 		}
 	}
-	return nil
+	return overrides
 }
 
 // GetRepository gets the knowledge repository

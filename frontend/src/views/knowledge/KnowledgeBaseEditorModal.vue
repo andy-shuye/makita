@@ -298,7 +298,7 @@ const initFormData = (type: 'document' | 'faq' = 'document') => {
       separators: ['\n\n', '\n', '。', '！', '？', ';', '；'],
       parserEngineRules: undefined as any
     },
-    storageProvider: 'local' as string,
+    storageProvider: 'minio' as string,
     multimodalConfig: {
       enabled: false,
       vllmModelId: ''
