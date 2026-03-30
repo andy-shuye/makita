@@ -13,13 +13,13 @@
           <div class="title-row">
             <h2>{{ $t('organization.title') }}</h2>
             <div class="header-actions">
-              <t-tooltip :content="$t('organization.joinOrg')" placement="bottom">
+              <t-tooltip v-if="false" :content="$t('organization.joinOrg')" placement="bottom">
                 <t-button
                   variant="text"
                   theme="default"
                   size="small"
                   class="header-action-btn"
-                  @click="handleJoinOrganization"
+                  @click="handleJoinOrganization" v-if="false"
                 >
                   <template #icon><t-icon name="enter" size="16px" /></template>
                 </t-button>
@@ -156,11 +156,11 @@
       <span class="empty-txt">{{ emptyStateTitle }}</span>
       <span class="empty-desc">{{ emptyStateDesc }}</span>
       <div class="empty-state-actions">
-        <t-button theme="default" variant="outline" class="org-join-btn" @click="handleJoinOrganization">
+        <t-button v-if="false" theme="default" variant="outline" class="org-join-btn" @click="handleJoinOrganization">
           <template #icon><t-icon name="enter" /></template>
           {{ $t('organization.joinOrg') }}
         </t-button>
-        <t-button class="org-create-btn" @click="handleCreateOrganization">
+        <t-button v-if="canCreateSpace" class="org-create-btn" @click="handleCreateOrganization">
           <template #icon><img src="@/assets/img/organization-green.svg" class="org-create-icon" alt="" aria-hidden="true" /></template>
           {{ $t('organization.createOrg') }}
         </t-button>
@@ -567,6 +567,7 @@ import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useOrganizationStore } from '@/stores/organization'
+import { useAuthStore } from '@/stores/auth'
 import type { Organization, OrganizationPreview, SearchableOrganizationItem } from '@/api/organization'
 import { previewOrganization, joinOrganization, submitJoinRequest, searchSearchableOrganizations, joinOrganizationById } from '@/api/organization'
 import { useI18n } from 'vue-i18n'
@@ -582,6 +583,13 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const orgStore = useOrganizationStore()
+const authStore = useAuthStore()
+
+
+const canCreateSpace = computed(() => {
+  const role = authStore.user?.system_role
+  return role === 'super_admin' || role === 'dept_admin' || authStore.user?.can_access_all_tenants === true
+})
 
 // 申请加入时可选角色（仅需审核时使用）
 const orgRoleOptions = [
@@ -824,6 +832,10 @@ const onVisibleChange = (visible: boolean, org: OrgWithUI) => {
 
 // 创建组织
 function handleCreateOrganization() {
+  if (!canCreateSpace.value) {
+    MessagePlugin.warning('您没有权限执行此操作')
+    return
+  }
   settingsOrgId.value = ''
   settingsMode.value = 'create'
   showSettingsModal.value = true
@@ -831,15 +843,7 @@ function handleCreateOrganization() {
 
 // 加入组织
 function handleJoinOrganization() {
-  joinInputCode.value = ''
-  inviteCode.value = ''
-  invitePreviewData.value = null
-  invitePreviewError.value = ''
-  invitePreviewLoading.value = false
-  joinStep.value = 'invite'
-  searchQuery.value = ''
-  searchableList.value = []
-  showInvitePreview.value = true
+  MessagePlugin.warning('空间加入入口已下线，请联系管理员通过成员管理添加')
 }
 
 function handleCardClick(org: OrgWithUI) {
@@ -1192,10 +1196,13 @@ onMounted(async () => {
   orgStore.fetchOrganizations()
   window.addEventListener('openOrganizationDialog', handleOrganizationDialogEvent)
   
-  // 检查 URL 中是否有邀请码
+  // 邀请链接/邀请码加入已下线：若命中旧链接，给出友好提示并清理 URL
   const code = route.query.invite_code as string
   if (code) {
-    await handleInvitePreview(code)
+    MessagePlugin.warning('邀请码/邀请链接加入已下线，请联系管理员通过成员管理添加')
+    const newQuery = { ...route.query }
+    delete newQuery.invite_code
+    router.replace({ path: route.path, query: newQuery })
   }
   
   // 检查 URL 中是否有 orgId，如果有则打开空间设置

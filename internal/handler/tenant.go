@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,6 +20,75 @@ import (
 // TenantHandler implements HTTP request handlers for tenant management
 // Provides functionality for creating, retrieving, updating, and deleting tenants
 // through the REST API endpoints
+const defaultMinerUEndpoint = "http://192.168.40.186:8000"
+
+func defaultParserEngineConfig() *types.ParserEngineConfig {
+	return &types.ParserEngineConfig{
+		MinerUEndpoint: defaultMinerUEndpoint,
+		MinerUModel:    "pipeline",
+		MinerULanguage: "ch",
+	}
+}
+
+func defaultStorageEngineConfig() *types.StorageEngineConfig {
+	return &types.StorageEngineConfig{
+		DefaultProvider: "minio",
+		Local:           &types.LocalEngineConfig{PathPrefix: ""},
+		MinIO:           &types.MinIOEngineConfig{Mode: "docker", BucketName: "weknora", UseSSL: false, PathPrefix: ""},
+		COS:             &types.COSEngineConfig{},
+		TOS:             &types.TOSEngineConfig{},
+	}
+}
+
+func mergeParserEngineConfigWithDefaults(cfg *types.ParserEngineConfig) *types.ParserEngineConfig {
+	base := defaultParserEngineConfig()
+	if cfg == nil {
+		return base
+	}
+	out := *cfg
+	if strings.TrimSpace(out.MinerUEndpoint) == "" {
+		out.MinerUEndpoint = base.MinerUEndpoint
+	}
+	if strings.TrimSpace(out.MinerUModel) == "" {
+		out.MinerUModel = base.MinerUModel
+	}
+	if strings.TrimSpace(out.MinerULanguage) == "" {
+		out.MinerULanguage = base.MinerULanguage
+	}
+	return &out
+}
+
+func mergeStorageEngineConfigWithDefaults(cfg *types.StorageEngineConfig) *types.StorageEngineConfig {
+	base := defaultStorageEngineConfig()
+	if cfg == nil {
+		return base
+	}
+	out := *cfg
+	if strings.TrimSpace(out.DefaultProvider) == "" {
+		out.DefaultProvider = base.DefaultProvider
+	}
+	if out.Local == nil {
+		out.Local = base.Local
+	}
+	if out.MinIO == nil {
+		out.MinIO = base.MinIO
+	} else {
+		if strings.TrimSpace(out.MinIO.Mode) == "" {
+			out.MinIO.Mode = "docker"
+		}
+		if strings.TrimSpace(out.MinIO.BucketName) == "" {
+			out.MinIO.BucketName = "weknora"
+		}
+	}
+	if out.COS == nil {
+		out.COS = base.COS
+	}
+	if out.TOS == nil {
+		out.TOS = base.TOS
+	}
+	return &out
+}
+
 type TenantHandler struct {
 	service     interfaces.TenantService
 	userService interfaces.UserService
@@ -761,10 +831,7 @@ func (h *TenantHandler) GetTenantParserEngineConfig(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("Tenant is empty"))
 		return
 	}
-	data := tenant.ParserEngineConfig
-	if data == nil {
-		data = &types.ParserEngineConfig{}
-	}
+	data := mergeParserEngineConfigWithDefaults(tenant.ParserEngineConfig)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    data,
@@ -786,7 +853,7 @@ func (h *TenantHandler) updateTenantParserEngineConfigInternal(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("Tenant is empty"))
 		return
 	}
-	tenant.ParserEngineConfig = &cfg
+	tenant.ParserEngineConfig = mergeParserEngineConfigWithDefaults(&cfg)
 	updatedTenant, err := h.service.UpdateTenant(ctx, tenant)
 	if err != nil {
 		if appErr, ok := errors.IsAppError(err); ok {
@@ -813,10 +880,7 @@ func (h *TenantHandler) GetTenantStorageEngineConfig(c *gin.Context) {
 		c.Error(errors.NewBadRequestError("Tenant is empty"))
 		return
 	}
-	data := tenant.StorageEngineConfig
-	if data == nil {
-		data = &types.StorageEngineConfig{}
-	}
+	data := mergeStorageEngineConfigWithDefaults(tenant.StorageEngineConfig)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    data,
@@ -838,7 +902,7 @@ func (h *TenantHandler) updateTenantStorageEngineConfigInternal(c *gin.Context) 
 		c.Error(errors.NewBadRequestError("Tenant is empty"))
 		return
 	}
-	tenant.StorageEngineConfig = &cfg
+	tenant.StorageEngineConfig = mergeStorageEngineConfigWithDefaults(&cfg)
 	updatedTenant, err := h.service.UpdateTenant(ctx, tenant)
 	if err != nil {
 		if appErr, ok := errors.IsAppError(err); ok {

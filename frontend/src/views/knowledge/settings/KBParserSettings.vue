@@ -188,6 +188,13 @@ function hasAvailableEngine(extensions: string[]): boolean {
 
 function getDefaultEngine(extensions: string[]): string {
   const opts = getEngineOptions(extensions)
+  const hasPdf = extensions.includes('pdf')
+  const imageSet = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'])
+  const hasImage = extensions.some((e) => imageSet.has(e))
+  if (hasPdf || hasImage) {
+    const mineru = opts.find((o) => o.value === 'mineru' && !o.disabled)
+    if (mineru) return mineru.value
+  }
   return opts.find(o => o.isDefault)?.value ?? ''
 }
 

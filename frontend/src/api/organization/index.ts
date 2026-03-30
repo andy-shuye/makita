@@ -213,8 +213,10 @@ export interface RequestRoleUpgradeRequest {
 }
 
 export interface InviteMemberRequest {
-  user_id: string // User ID to invite
-  role: 'admin' | 'editor' | 'viewer' // Role to assign
+  user_id?: string // 单个用户 ID
+  department?: string // 部门名（来源 user.avatar）
+  action?: 'add' | 'remove' // 默认 add
+  role?: 'admin' | 'editor' | 'viewer' // add 时可设置角色，默认 viewer
 }
 
 export interface UserSearchResult {
