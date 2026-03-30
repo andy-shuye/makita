@@ -371,9 +371,9 @@ import {
 } from '@/api/system'
 
 const defaultConfig = (): StorageEngineConfig => ({
-  default_provider: 'local',
+  default_provider: 'minio',
   local: { path_prefix: '' },
-  minio: { mode: 'docker', endpoint: '', access_key_id: '', secret_access_key: '', bucket_name: '', use_ssl: false, path_prefix: '' },
+  minio: { mode: 'docker', endpoint: '', access_key_id: '', secret_access_key: '', bucket_name: 'weknora', use_ssl: false, path_prefix: '' },
   cos: {
     secret_id: '',
     secret_key: '',
@@ -427,7 +427,7 @@ async function loadConfig() {
     const d = res?.data
     if (d) {
       config.value = {
-        default_provider: d.default_provider || 'local',
+        default_provider: d.default_provider || 'minio',
         local: d.local ? { path_prefix: d.local.path_prefix || '' } : { path_prefix: '' },
         minio: d.minio
           ? {
@@ -435,7 +435,7 @@ async function loadConfig() {
               endpoint: d.minio.endpoint || '',
               access_key_id: d.minio.access_key_id || '',
               secret_access_key: d.minio.secret_access_key || '',
-              bucket_name: d.minio.bucket_name || '',
+              bucket_name: d.minio.bucket_name || 'weknora',
               use_ssl: d.minio.use_ssl ?? false,
               path_prefix: d.minio.path_prefix || '',
             }

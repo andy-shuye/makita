@@ -101,7 +101,7 @@
               <label>自建端点</label>
               <t-input
                 v-model="config.mineru_endpoint"
-                placeholder="如 https://your-mineru.example.com"
+                placeholder="如 http://192.168.40.186:8000（不要带 /file_parse）"
                 clearable
               />
             </div>
@@ -205,8 +205,8 @@ const ENGINE_DOC_LINKS: Record<string, { url: string; label: string }> = {
 const DEFAULT_PARSER_CONFIG: ParserEngineConfig = {
   docreader_addr: '',
   docreader_transport: 'grpc',
-  mineru_endpoint: '',
-  mineru_api_key: 'eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI1MDE4MTI2MSIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc3Mjc4MDQzNCwiY2xpZW50SWQiOiJsa3pkeDU3bnZ5MjJqa3BxOXgydyIsInBob25lIjoiMTUxMzkwNzIzMTIiLCJvcGVuSWQiOm51bGwsInV1aWQiOiIxN2Q2OWM4NC1iMDEwLTQ2ZDMtOWQ3Zi0xYWZlMjQwMjdhNGUiLCJlbWFpbCI6IiIsImV4cCI6MTc4MDU1NjQzNH0.DcQB4hE8aZsxmkeZqMRPH6CO7f0gPmnRTZGqML0Oz3gLzova2vX_3DviAhNDQFJjjLwr0s3Jk6jF_4I6ly3jFg',
+  mineru_endpoint: 'http://192.168.40.186:8000',
+  mineru_api_key: '',
   mineru_model: 'pipeline',
   mineru_enable_formula: true,
   mineru_enable_table: true,
@@ -287,13 +287,13 @@ async function loadConfig() {
     config.value = {
       docreader_addr: data?.docreader_addr ?? DEFAULT_PARSER_CONFIG.docreader_addr ?? '',
       docreader_transport: data?.docreader_transport ?? DEFAULT_PARSER_CONFIG.docreader_transport ?? 'grpc',
-      mineru_endpoint: data?.mineru_endpoint ?? DEFAULT_PARSER_CONFIG.mineru_endpoint ?? '',
+      mineru_endpoint: data?.mineru_endpoint || DEFAULT_PARSER_CONFIG.mineru_endpoint || '',
       mineru_api_key: data?.mineru_api_key ?? DEFAULT_PARSER_CONFIG.mineru_api_key ?? '',
-      mineru_model: data?.mineru_model ?? DEFAULT_PARSER_CONFIG.mineru_model ?? '',
+      mineru_model: data?.mineru_model || DEFAULT_PARSER_CONFIG.mineru_model || '',
       mineru_enable_formula: data?.mineru_enable_formula ?? DEFAULT_PARSER_CONFIG.mineru_enable_formula ?? true,
       mineru_enable_table: data?.mineru_enable_table ?? DEFAULT_PARSER_CONFIG.mineru_enable_table ?? true,
       mineru_enable_ocr: data?.mineru_enable_ocr ?? DEFAULT_PARSER_CONFIG.mineru_enable_ocr ?? true,
-      mineru_language: data?.mineru_language ?? DEFAULT_PARSER_CONFIG.mineru_language ?? 'ch',
+      mineru_language: data?.mineru_language || DEFAULT_PARSER_CONFIG.mineru_language || 'ch',
       mineru_cloud_model: data?.mineru_cloud_model ?? DEFAULT_PARSER_CONFIG.mineru_cloud_model ?? '',
       mineru_cloud_enable_formula: data?.mineru_cloud_enable_formula ?? DEFAULT_PARSER_CONFIG.mineru_cloud_enable_formula ?? true,
       mineru_cloud_enable_table: data?.mineru_cloud_enable_table ?? DEFAULT_PARSER_CONFIG.mineru_cloud_enable_table ?? true,

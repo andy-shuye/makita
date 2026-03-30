@@ -33,10 +33,20 @@ type MinerUReader struct {
 	language      string
 }
 
+func normalizeMinerUEndpoint(raw string) string {
+	endpoint := strings.TrimSpace(raw)
+	endpoint = strings.TrimRight(endpoint, "/")
+	// 兼容误填完整 API 路径：若用户填了 .../file_parse，自动回退为服务根地址
+	if strings.HasSuffix(endpoint, "/file_parse") {
+		endpoint = strings.TrimSuffix(endpoint, "/file_parse")
+	}
+	return endpoint
+}
+
 // NewMinerUReader creates a reader from ParserEngineOverrides.
 func NewMinerUReader(overrides map[string]string) *MinerUReader {
 	c := &MinerUReader{
-		endpoint:      strings.TrimRight(overrides["mineru_endpoint"], "/"),
+		endpoint:      normalizeMinerUEndpoint(overrides["mineru_endpoint"]),
 		backend:       stringOr(overrides["mineru_model"], "pipeline"),
 		formulaEnable: parseBoolOr(overrides["mineru_enable_formula"], true),
 		tableEnable:   parseBoolOr(overrides["mineru_enable_table"], true),
@@ -61,6 +71,9 @@ func (c *MinerUReader) Read(ctx context.Context, req *types.ReadRequest) (*types
 	mdContent, imagesB64, err := c.callFileParse(ctx, content)
 	if err != nil {
 		return nil, fmt.Errorf("MinerU file_parse: %w", err)
+	}
+	if strings.TrimSpace(mdContent) == "" {
+		return nil, fmt.Errorf("MinerU file_parse: 返回内容为空，请检查 MinerU 接口返回字段与日志")
 	}
 
 	// HTML -> Markdown conversion (equivalent to Python markdownify)
@@ -87,6 +100,46 @@ type mineruFileParseResponse struct {
 			Images    map[string]string `json:"images"` // path -> "data:image/png;base64,..." or raw base64
 		} `json:"files"`
 	} `json:"results"`
+}
+
+type mineruFileParseResponseArray struct {
+	Results []struct {
+		Files struct {
+			MDContent string            `json:"md_content"`
+			Images    map[string]string `json:"images"`
+		} `json:"files"`
+		MDContent string            `json:"md_content"`
+		Images    map[string]string `json:"images"`
+	} `json:"results"`
+}
+
+func parseMinerUResponse(respBody []byte) (string, map[string]string, error) {
+	var result mineruFileParseResponse
+	if err := json.Unmarshal(respBody, &result); err == nil {
+		md := strings.TrimSpace(result.Results.Files.MDContent)
+		if md != "" || len(result.Results.Files.Images) > 0 {
+			return md, result.Results.Files.Images, nil
+		}
+	}
+
+	var resultArray mineruFileParseResponseArray
+	if err := json.Unmarshal(respBody, &resultArray); err == nil {
+		for _, item := range resultArray.Results {
+			md := strings.TrimSpace(item.Files.MDContent)
+			if md == "" {
+				md = strings.TrimSpace(item.MDContent)
+			}
+			img := item.Files.Images
+			if len(img) == 0 {
+				img = item.Images
+			}
+			if md != "" || len(img) > 0 {
+				return md, img, nil
+			}
+		}
+	}
+
+	return "", nil, fmt.Errorf("MinerU 返回体缺少可用的 md_content/images 字段")
 }
 
 func (c *MinerUReader) callFileParse(ctx context.Context, content []byte) (string, map[string]string, error) {
@@ -165,12 +218,11 @@ func (c *MinerUReader) callFileParse(ctx context.Context, content []byte) (strin
 		c.logMinerUResponseStructure(rawMap, "")
 	}
 
-	var result mineruFileParseResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", nil, fmt.Errorf("decode response: %w", err)
+	md, images, err := parseMinerUResponse(respBody)
+	if err != nil {
+		return "", nil, err
 	}
-
-	return result.Results.Files.MDContent, result.Results.Files.Images, nil
+	return md, images, nil
 }
 
 // processImages decodes base64 images from MinerU response and returns ImageRef list.
@@ -232,7 +284,7 @@ func (c *MinerUReader) logMinerUResponseStructure(obj interface{}, prefix string
 
 // PingMinerU checks if the self-hosted MinerU service is reachable.
 func PingMinerU(endpoint string) (bool, string) {
-	endpoint = strings.TrimRight(endpoint, "/")
+	endpoint = normalizeMinerUEndpoint(endpoint)
 	if endpoint == "" {
 		return false, "未配置 MinerU 端点"
 	}

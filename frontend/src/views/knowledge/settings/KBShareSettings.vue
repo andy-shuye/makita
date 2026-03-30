@@ -167,12 +167,14 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useOrganizationStore } from '@/stores/organization'
+import { useAuthStore } from '@/stores/auth'
 import { shareKnowledgeBase, listKBShares, removeShare, updateSharePermission } from '@/api/organization'
 import type { KnowledgeBaseShare } from '@/api/organization'
 import SpaceAvatar from '@/components/SpaceAvatar.vue'
 
 const { t } = useI18n()
 const orgStore = useOrganizationStore()
+const authStore = useAuthStore()
 
 function getOrgForShare(organizationId: string) {
   return orgStore.organizations.find(o => o.id === organizationId)
@@ -191,14 +193,14 @@ const selectedOrgId = ref('')
 const selectedPermission = ref<'viewer' | 'editor'>('viewer')
 const shares = ref<(KnowledgeBaseShare & { organization_name?: string })[]>([])
 
-// Only show organizations where user can share (editor or admin); exclude viewer-only orgs and already shared
+// Governance: super admin can share to any space; dept admin only to spaces they created; normal user cannot share
 const availableOrganizations = computed(() => {
   const sharedOrgIds = new Set(shares.value.map(s => s.organization_id))
-  return orgStore.organizations.filter(
-    (org) =>
-      !sharedOrgIds.has(org.id) &&
-      (org.is_owner === true || org.my_role === 'admin' || org.my_role === 'editor')
-  )
+  const role = authStore.user?.system_role
+  const isSuper = authStore.user?.can_access_all_tenants === true || role === "super_admin"
+  if (isSuper) return orgStore.organizations.filter((org) => !sharedOrgIds.has(org.id))
+  if (role === "dept_admin") return orgStore.organizations.filter((org) => !sharedOrgIds.has(org.id) && org.is_owner === true)
+  return []
 })
 
 // Load organizations
@@ -235,7 +237,10 @@ async function loadShares() {
 
 // Handle share
 async function handleShare() {
-  if (!selectedOrgId.value) return
+  if (!selectedOrgId.value) {
+    MessagePlugin.warning('您没有权限执行此操作')
+    return
+  }
 
   submitting.value = true
   try {

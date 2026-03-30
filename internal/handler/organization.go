@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +49,44 @@ func NewOrganizationHandler(
 		knowledgeRepo:      knowledgeRepo,
 		chunkRepo:          chunkRepo,
 	}
+}
+
+func (h *OrganizationHandler) currentUserFromContext(c *gin.Context) *types.User {
+	if u, ok := c.Request.Context().Value(types.UserContextKey).(*types.User); ok {
+		return u
+	}
+	return nil
+}
+
+func (h *OrganizationHandler) canViewOrganization(ctx context.Context, user *types.User, userID string, org *types.Organization) bool {
+	if user == nil || org == nil {
+		return false
+	}
+	if user.IsSuperAdmin() {
+		return true
+	}
+	if user.IsDeptAdmin() {
+		if org.OwnerID == userID {
+			return true
+		}
+		owner, err := h.userService.GetUserByID(ctx, org.OwnerID)
+		if err != nil || owner == nil {
+			return false
+		}
+		return owner.Department() == user.Department()
+	}
+	_, err := h.orgService.GetMember(ctx, org.ID, userID)
+	return err == nil
+}
+
+func (h *OrganizationHandler) canManageOrganization(user *types.User, userID string, org *types.Organization) bool {
+	if user == nil || org == nil {
+		return false
+	}
+	if user.IsSuperAdmin() {
+		return true
+	}
+	return user.IsDeptAdmin() && org.OwnerID == userID
 }
 
 // CreateOrganization creates a new organization
@@ -114,6 +151,11 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	if err != nil {
 		logger.Errorf(ctx, "Failed to get organization: %v", err)
 		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canViewOrganization(ctx, user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
 		return
 	}
 
@@ -356,6 +398,18 @@ func (h *OrganizationHandler) ListMembers(c *gin.Context) {
 
 	orgID := c.Param("id")
 
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	userID := c.GetString(types.UserIDContextKey.String())
+	if !h.canManageOrganization(user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
+
 	members, err := h.orgService.ListMembers(ctx, orgID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to list members: %v", err)
@@ -409,6 +463,17 @@ func (h *OrganizationHandler) UpdateMemberRole(c *gin.Context) {
 	memberUserID := c.Param("user_id")
 	operatorUserID := c.GetString(types.UserIDContextKey.String())
 
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canManageOrganization(user, operatorUserID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
+
 	var req types.UpdateMemberRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(apperrors.NewValidationError("Invalid request parameters").WithDetails(err.Error()))
@@ -444,6 +509,17 @@ func (h *OrganizationHandler) RemoveMember(c *gin.Context) {
 	memberUserID := c.Param("user_id")
 	operatorUserID := c.GetString(types.UserIDContextKey.String())
 
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if operatorUserID != memberUserID && !h.canManageOrganization(user, operatorUserID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
+
 	if err := h.orgService.RemoveMember(ctx, orgID, memberUserID, operatorUserID); err != nil {
 		logger.Errorf(ctx, "Failed to remove member: %v", err)
 		c.Error(apperrors.NewForbiddenError("Permission denied or invalid operation"))
@@ -467,22 +543,7 @@ func (h *OrganizationHandler) RemoveMember(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/{id}/invite-code [post]
 func (h *OrganizationHandler) GenerateInviteCode(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	orgID := c.Param("id")
-	userID := c.GetString(types.UserIDContextKey.String())
-
-	code, err := h.orgService.GenerateInviteCode(ctx, orgID, userID)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to generate invite code: %v", err)
-		c.Error(apperrors.NewForbiddenError("Permission denied"))
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success":     true,
-		"invite_code": code,
-	})
+	c.Error(apperrors.NewForbiddenError("邀请码/邀请链接加入已下线，请联系管理员通过成员管理添加"))
 }
 
 // PreviewByInviteCode previews organization info by invite code (without joining)
@@ -496,48 +557,7 @@ func (h *OrganizationHandler) GenerateInviteCode(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/preview/{code} [get]
 func (h *OrganizationHandler) PreviewByInviteCode(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	inviteCode := c.Param("code")
-	userID := c.GetString(types.UserIDContextKey.String())
-
-	// Get organization by invite code
-	org, err := h.orgService.GetOrganizationByInviteCode(ctx, inviteCode)
-	if err != nil {
-		c.Error(apperrors.NewNotFoundError("Invalid invite code"))
-		return
-	}
-
-	// Get member count
-	members, _ := h.orgService.ListMembers(ctx, org.ID)
-	memberCount := len(members)
-
-	// Get shared knowledge bases count
-	shares, _ := h.shareService.ListSharesByOrganization(ctx, org.ID)
-	shareCount := len(shares)
-	// Get shared agents count
-	agentShares, _ := h.agentShareService.ListSharesByOrganization(ctx, org.ID)
-	agentShareCount := len(agentShares)
-
-	// Check if user is already a member
-	_, memberErr := h.orgService.GetMember(ctx, org.ID, userID)
-	isAlreadyMember := memberErr == nil
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": gin.H{
-			"id":                org.ID,
-			"name":              org.Name,
-			"description":       org.Description,
-			"avatar":            org.Avatar,
-			"member_count":      memberCount,
-			"share_count":       shareCount,
-			"agent_share_count": agentShareCount,
-			"is_already_member": isAlreadyMember,
-			"require_approval":  org.RequireApproval,
-			"created_at":        org.CreatedAt,
-		},
-	})
+	c.Error(apperrors.NewForbiddenError("邀请码/邀请链接加入已下线，请联系管理员通过成员管理添加"))
 }
 
 // JoinByInviteCode joins an organization by invite code
@@ -552,33 +572,7 @@ func (h *OrganizationHandler) PreviewByInviteCode(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/join [post]
 func (h *OrganizationHandler) JoinByInviteCode(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	userID := c.GetString(types.UserIDContextKey.String())
-	tenantID := c.GetUint64(types.TenantIDContextKey.String())
-
-	var req types.JoinOrganizationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(apperrors.NewValidationError("Invalid request parameters").WithDetails(err.Error()))
-		return
-	}
-
-	org, err := h.orgService.JoinByInviteCode(ctx, req.InviteCode, userID, tenantID)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to join organization: %v", err)
-		if errors.Is(err, service.ErrOrgMemberLimitReached) {
-			c.Error(apperrors.NewValidationError("该空间成员已满，无法加入"))
-			return
-		}
-		c.Error(apperrors.NewNotFoundError("Invalid invite code"))
-		return
-	}
-
-	logger.Infof(ctx, "User %s joined organization %s", secutils.SanitizeForLog(userID), org.ID)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    h.toOrgResponse(ctx, org, userID),
-	})
+	c.Error(apperrors.NewForbiddenError("邀请码/邀请链接加入已下线，请联系管理员通过成员管理添加"))
 }
 
 // SubmitJoinRequest submits a join request for organizations that require approval
@@ -593,65 +587,7 @@ func (h *OrganizationHandler) JoinByInviteCode(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/join-request [post]
 func (h *OrganizationHandler) SubmitJoinRequest(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	userID := c.GetString(types.UserIDContextKey.String())
-	tenantID := c.GetUint64(types.TenantIDContextKey.String())
-
-	var req types.SubmitJoinRequestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(apperrors.NewValidationError("Invalid request parameters").WithDetails(err.Error()))
-		return
-	}
-
-	// Get organization by invite code
-	org, err := h.orgService.GetOrganizationByInviteCode(ctx, req.InviteCode)
-	if err != nil {
-		c.Error(apperrors.NewNotFoundError("Invalid invite code"))
-		return
-	}
-
-	// Check if organization requires approval
-	if !org.RequireApproval {
-		c.Error(apperrors.NewValidationError("This organization does not require approval. Use the join endpoint instead."))
-		return
-	}
-
-	// Check if user is already a member
-	_, memberErr := h.orgService.GetMember(ctx, org.ID, userID)
-	if memberErr == nil {
-		c.Error(apperrors.NewValidationError("You are already a member of this organization"))
-		return
-	}
-
-	// Validate requested role: only viewer/editor/admin allowed
-	requestedRole := req.Role
-	if requestedRole != "" && !requestedRole.IsValid() {
-		c.Error(apperrors.NewValidationError("Invalid role; must be viewer, editor, or admin"))
-		return
-	}
-
-	// Submit join request (service defaults to viewer if role empty)
-	request, err := h.orgService.SubmitJoinRequest(ctx, org.ID, userID, tenantID, req.Message, requestedRole)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to submit join request: %v", err)
-		if errors.Is(err, service.ErrOrgMemberLimitReached) {
-			c.Error(apperrors.NewValidationError("该空间成员已满，无法提交加入申请"))
-			return
-		}
-		if err.Error() == "pending request already exists" {
-			c.Error(apperrors.NewValidationError("You have already submitted a request to join this organization"))
-			return
-		}
-		c.Error(apperrors.NewInternalServerError("Failed to submit join request"))
-		return
-	}
-
-	logger.Infof(ctx, "User %s submitted join request for organization %s", secutils.SanitizeForLog(userID), org.ID)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    request,
-	})
+	c.Error(apperrors.NewForbiddenError("用户主动申请加入空间已下线，请联系管理员通过成员管理添加"))
 }
 
 // SearchOrganizations returns searchable (discoverable) organizations
@@ -665,26 +601,7 @@ func (h *OrganizationHandler) SubmitJoinRequest(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/search [get]
 func (h *OrganizationHandler) SearchOrganizations(c *gin.Context) {
-	ctx := c.Request.Context()
-	userID := c.GetString(types.UserIDContextKey.String())
-	query := c.Query("q")
-	limit := 20
-	if l := c.Query("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
-			limit = n
-		}
-	}
-	resp, err := h.orgService.SearchSearchableOrganizations(ctx, userID, query, limit)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to search organizations: %v", err)
-		c.Error(apperrors.NewInternalServerError("Failed to search organizations"))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    resp.Organizations,
-		"total":   resp.Total,
-	})
+	c.Error(apperrors.NewForbiddenError("空间搜索加入已下线，请联系管理员通过成员管理添加"))
 }
 
 // JoinByOrganizationID joins a searchable organization by ID (no invite code)
@@ -699,47 +616,7 @@ func (h *OrganizationHandler) SearchOrganizations(c *gin.Context) {
 // @Security     Bearer
 // @Router       /organizations/join-by-id [post]
 func (h *OrganizationHandler) JoinByOrganizationID(c *gin.Context) {
-	ctx := c.Request.Context()
-	userID := c.GetString(types.UserIDContextKey.String())
-	tenantID := c.GetUint64(types.TenantIDContextKey.String())
-	var req types.JoinByOrganizationIDRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.Error(apperrors.NewValidationError("Invalid request parameters").WithDetails(err.Error()))
-		return
-	}
-	// Validate requested role if provided
-	requestedRole := req.Role
-	if requestedRole != "" && !requestedRole.IsValid() {
-		c.Error(apperrors.NewValidationError("Invalid role; must be viewer, editor, or admin"))
-		return
-	}
-	org, err := h.orgService.JoinByOrganizationID(ctx, req.OrganizationID, userID, tenantID, req.Message, requestedRole)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to join organization by ID: %v", err)
-		if errors.Is(err, service.ErrOrgNotFound) {
-			c.Error(apperrors.NewNotFoundError("Organization not found or not open for search"))
-			return
-		}
-		if errors.Is(err, service.ErrOrgPermissionDenied) {
-			c.Error(apperrors.NewForbiddenError("Organization not open for search"))
-			return
-		}
-		if errors.Is(err, service.ErrOrgMemberLimitReached) {
-			c.Error(apperrors.NewValidationError("该空间成员已满，无法加入"))
-			return
-		}
-		if errors.Is(err, service.ErrInvalidRole) {
-			c.Error(apperrors.NewValidationError("Invalid role"))
-			return
-		}
-		c.Error(apperrors.NewInternalServerError("Failed to join organization"))
-		return
-	}
-	logger.Infof(ctx, "User %s joined organization %s by ID", secutils.SanitizeForLog(userID), org.ID)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    h.toOrgResponse(ctx, org, userID),
-	})
+	c.Error(apperrors.NewForbiddenError("用户主动加入空间已下线，请联系管理员通过成员管理添加"))
 }
 
 // RequestRoleUpgrade submits a request to upgrade role in an organization
@@ -859,10 +736,14 @@ func (h *OrganizationHandler) ListJoinRequests(c *gin.Context) {
 	orgID := c.Param("id")
 	userID := c.GetString(types.UserIDContextKey.String())
 
-	// Check admin
-	isAdmin, err := h.orgService.IsOrgAdmin(ctx, orgID, userID)
-	if err != nil || !isAdmin {
-		c.Error(apperrors.NewForbiddenError("Only organization admins can view join requests"))
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canManageOrganization(user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
 		return
 	}
 
@@ -930,10 +811,14 @@ func (h *OrganizationHandler) ReviewJoinRequest(c *gin.Context) {
 	requestID := c.Param("request_id")
 	userID := c.GetString(types.UserIDContextKey.String())
 
-	// Check admin
-	isAdmin, err := h.orgService.IsOrgAdmin(ctx, orgID, userID)
-	if err != nil || !isAdmin {
-		c.Error(apperrors.NewForbiddenError("Only organization admins can review join requests"))
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canManageOrganization(user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
 		return
 	}
 
@@ -1153,13 +1038,22 @@ func (h *OrganizationHandler) ListOrgShares(c *gin.Context) {
 	orgID := c.Param("id")
 	userID := c.GetString(types.UserIDContextKey.String())
 
-	// Check if user is a member and get their role for effective-permission calculation
-	member, err := h.orgService.GetMember(ctx, orgID, userID)
+	org, err := h.orgService.GetOrganization(ctx, orgID)
 	if err != nil {
-		c.Error(apperrors.NewForbiddenError("You are not a member of this organization"))
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
 		return
 	}
-	myRoleInOrg := member.Role
+	user := h.currentUserFromContext(c)
+	if !h.canViewOrganization(ctx, user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
+	myRoleInOrg := types.OrgRoleViewer
+	if member, err := h.orgService.GetMember(ctx, orgID, userID); err == nil {
+		myRoleInOrg = member.Role
+	} else if h.canManageOrganization(user, userID, org) {
+		myRoleInOrg = types.OrgRoleAdmin
+	}
 
 	shares, err := h.shareService.ListSharesByOrganization(ctx, orgID)
 	if err != nil {
@@ -1315,12 +1209,22 @@ func (h *OrganizationHandler) ListOrgAgentShares(c *gin.Context) {
 	ctx := c.Request.Context()
 	orgID := c.Param("id")
 	userID := c.GetString(types.UserIDContextKey.String())
-	member, err := h.orgService.GetMember(ctx, orgID, userID)
+	org, err := h.orgService.GetOrganization(ctx, orgID)
 	if err != nil {
-		c.Error(apperrors.NewForbiddenError("You are not a member of this organization"))
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
 		return
 	}
-	myRoleInOrg := member.Role
+	user := h.currentUserFromContext(c)
+	if !h.canViewOrganization(ctx, user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
+	myRoleInOrg := types.OrgRoleViewer
+	if member, err := h.orgService.GetMember(ctx, orgID, userID); err == nil {
+		myRoleInOrg = member.Role
+	} else if h.canManageOrganization(user, userID, org) {
+		myRoleInOrg = types.OrgRoleAdmin
+	}
 	shares, err := h.agentShareService.ListSharesByOrganization(ctx, orgID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to list organization agent shares: %v", err)
@@ -1520,6 +1424,16 @@ func (h *OrganizationHandler) ListOrganizationSharedKnowledgeBases(c *gin.Contex
 	userID := c.GetString(types.UserIDContextKey.String())
 	tenantID := c.GetUint64(types.TenantIDContextKey.String())
 
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canViewOrganization(ctx, user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
 	list, err := h.listSpaceKnowledgeBasesInOrganization(ctx, orgID, userID, tenantID)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotInOrg) {
@@ -1548,6 +1462,16 @@ func (h *OrganizationHandler) ListOrganizationSharedAgents(c *gin.Context) {
 	userID := c.GetString(types.UserIDContextKey.String())
 	tenantID := c.GetUint64(types.TenantIDContextKey.String())
 
+	org, err := h.orgService.GetOrganization(ctx, orgID)
+	if err != nil {
+		c.Error(apperrors.NewNotFoundError("Organization not found"))
+		return
+	}
+	user := h.currentUserFromContext(c)
+	if !h.canViewOrganization(ctx, user, userID, org) {
+		c.Error(apperrors.NewForbiddenError("您没有权限执行此操作"))
+		return
+	}
 	list, err := h.agentShareService.ListSharedAgentsInOrganization(ctx, orgID, userID, tenantID)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotInOrg) {
