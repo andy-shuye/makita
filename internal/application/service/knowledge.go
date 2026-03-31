@@ -7216,6 +7216,15 @@ func (s *knowledgeService) ProcessDocument(ctx context.Context, t *asynq.Task) e
 		}
 	}
 	logger.Infof(ctx, "Split document into %d chunks for knowledge %s", len(chunks), knowledge.ID)
+	// 如果解析结果为空（0 chunks），标记失败而不是静默完成
+	if len(chunks) == 0 {
+		knowledge.ParseStatus = "failed"
+		knowledge.ErrorMessage = "文档解析后内容为空，未能生成任何分块。请检查文件内容或解析引擎配置。"
+		knowledge.UpdatedAt = time.Now()
+		s.repo.UpdateKnowledge(ctx, knowledge)
+		logger.Warnf(ctx, "Document produced 0 chunks for knowledge %s, marked as failed", knowledge.ID)
+		return nil
+	}
 
 	// Step 4: Process chunks (vectorize + index + enqueue async tasks)
 	s.processChunks(ctx, kb, knowledge, chunks, ProcessChunksOptions{
@@ -7315,7 +7324,17 @@ func (s *knowledgeService) resolveDocReader(engine, fileType string, isURL bool,
 		return docparser.NewMinerUReader(overrides)
 	case "mineru_cloud":
 		return docparser.NewMinerUCloudReader(overrides)
-	default:
+	case "": // 未配置 ParserEngineRules 时的自动路由
+		if !isURL && docparser.IsSimpleFormat(fileType) {
+			return &docparser.SimpleFormatReader{}
+		}
+		if !isURL && docparser.IsMinerUSupportedFormat(fileType) {
+			if ep := overrides["mineru_endpoint"]; ep != "" {
+				return docparser.NewMinerUReader(overrides)
+			}
+		}
+		return s.documentReader
+	default: // "builtin" 或其他已配置的引擎，使用通用 documentReader
 		if !isURL && docparser.IsSimpleFormat(fileType) {
 			return &docparser.SimpleFormatReader{}
 		}

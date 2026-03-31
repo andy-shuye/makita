@@ -34,6 +34,17 @@ func IsSimpleFormat(fileType string) bool {
 	return simpleFormats[strings.ToLower(strings.TrimPrefix(fileType, "."))]
 }
 
+// mineruSupportedFormats lists file extensions that MinerU can parse (complex document formats).
+var mineruSupportedFormats = map[string]bool{
+	"pdf": true,
+	"ppt": true, "pptx": true,
+}
+
+// IsMinerUSupportedFormat returns true if the file type can be parsed by MinerU.
+func IsMinerUSupportedFormat(fileType string) bool {
+	return mineruSupportedFormats[strings.ToLower(strings.TrimPrefix(fileType, "."))]
+}
+
 // SimpleFormatReader handles simple file formats and images directly in Go,
 // bypassing the Python docreader service.
 type SimpleFormatReader struct{}

@@ -93,12 +93,15 @@ func (c *MinerUReader) Read(ctx context.Context, req *types.ReadRequest) (*types
 }
 
 // mineruFileParseResponse mirrors the relevant fields from the MinerU API response.
+type mineruDocOrFiles struct {
+	MDContent string            `json:"md_content"`
+	Images    map[string]string `json:"images"`
+}
+
 type mineruFileParseResponse struct {
 	Results struct {
-		Files struct {
-			MDContent string            `json:"md_content"`
-			Images    map[string]string `json:"images"` // path -> "data:image/png;base64,..." or raw base64
-		} `json:"files"`
+		Files    mineruDocOrFiles `json:"files"`
+		Document mineruDocOrFiles `json:"document"`
 	} `json:"results"`
 }
 
@@ -116,9 +119,11 @@ type mineruFileParseResponseArray struct {
 func parseMinerUResponse(respBody []byte) (string, map[string]string, error) {
 	var result mineruFileParseResponse
 	if err := json.Unmarshal(respBody, &result); err == nil {
-		md := strings.TrimSpace(result.Results.Files.MDContent)
-		if md != "" || len(result.Results.Files.Images) > 0 {
-			return md, result.Results.Files.Images, nil
+		for _, doc := range []mineruDocOrFiles{result.Results.Document, result.Results.Files} {
+			md := strings.TrimSpace(doc.MDContent)
+			if md != "" || len(doc.Images) > 0 {
+				return md, doc.Images, nil
+			}
 		}
 	}
 
