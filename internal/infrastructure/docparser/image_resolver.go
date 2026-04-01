@@ -3,6 +3,7 @@ package docparser
 import (
 	"context"
 	"log"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -48,7 +49,7 @@ func (r *ImageResolver) ResolveAndStore(
 	// Build a map of original_ref -> image ref for fast lookup
 	refMap := make(map[string]types.ImageRef)
 	for _, ref := range result.ImageRefs {
-		refMap[ref.OriginalRef] = ref
+		refMap[normalizeImageRef(ref.OriginalRef)] = ref
 	}
 
 	// Process each image reference found in the markdown
@@ -58,7 +59,7 @@ func (r *ImageResolver) ResolveAndStore(
 	// Process in reverse order to preserve positions when replacing
 	for i := len(matches) - 1; i >= 0; i-- {
 		m := matches[i]
-		refPath := markdown[m[4]:m[5]] // group 2: the URL/path
+		refPath := extractImagePath(markdown[m[4]:m[5]]) // group 2: the URL/path
 
 		// Skip already-resolved URLs (http/https, unified /files/, or provider:// scheme)
 		if strings.HasPrefix(refPath, "http://") || strings.HasPrefix(refPath, "https://") ||
@@ -67,7 +68,7 @@ func (r *ImageResolver) ResolveAndStore(
 		}
 
 		// Find inline image bytes from the result
-		ref, found := refMap[refPath]
+		ref, found := refMap[normalizeImageRef(refPath)]
 		if !found || len(ref.ImageData) == 0 {
 			continue
 		}
@@ -117,6 +118,44 @@ func extFromMime(mime string) string {
 	default:
 		return ""
 	}
+}
+
+// extractImagePath extracts the actual URL/path from markdown image target content.
+// It supports variants like:
+//   - images/a.png
+//   - <images/a.png>
+//   - images/a.png "title"
+func extractImagePath(raw string) string {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(target, "<") && strings.Contains(target, ">") {
+		if end := strings.Index(target, ">"); end > 1 {
+			target = target[1:end]
+		}
+	}
+
+	if i := strings.IndexAny(target, " \t\n"); i > 0 {
+		target = target[:i]
+	}
+
+	return strings.Trim(target, `"'`)
+}
+
+// normalizeImageRef normalizes image references from markdown and docreader output
+// so they can be matched reliably.
+func normalizeImageRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	ref = strings.ReplaceAll(ref, "\\", "/")
+	ref = strings.TrimPrefix(ref, "./")
+	ref = strings.TrimPrefix(ref, "/")
+	ref = strings.Trim(ref, `"'<>`)
+	if unescaped, err := url.PathUnescape(ref); err == nil {
+		ref = unescaped
+	}
+	return ref
 }
 
 // isProviderScheme checks if the path uses a provider:// scheme (local://, minio://, cos://, tos://).
