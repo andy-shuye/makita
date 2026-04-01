@@ -74,3 +74,53 @@ func TestResolveAndStore_WithMarkdownTitle(t *testing.T) {
 	}
 }
 
+func TestResolveAndStore_UseStorageKeyDirectly(t *testing.T) {
+	resolver := NewImageResolver()
+	result := &types.ReadResult{
+		MarkdownContent: `图示 ![](images/a.jpg)`,
+		ImageRefs: []types.ImageRef{
+			{
+				OriginalRef: "images/a.jpg",
+				MimeType:    "image/jpeg",
+				StorageKey:  "minio://bucket/1/exports/from-parser.jpg",
+			},
+		},
+	}
+
+	updated, images, err := resolver.ResolveAndStore(context.Background(), result, &mockFileService{}, 1)
+	if err != nil {
+		t.Fatalf("ResolveAndStore returned error: %v", err)
+	}
+	if len(images) != 1 {
+		t.Fatalf("expected 1 stored image, got %d", len(images))
+	}
+	if images[0].ServingURL != "minio://bucket/1/exports/from-parser.jpg" {
+		t.Fatalf("unexpected serving url: %s", images[0].ServingURL)
+	}
+	if updated != `图示 ![](minio://bucket/1/exports/from-parser.jpg)` {
+		t.Fatalf("unexpected markdown: %q", updated)
+	}
+}
+
+func TestNormalizeServingURLFromStorageKey(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "provider", in: "minio://bucket/a.jpg", want: "minio://bucket/a.jpg"},
+		{name: "http", in: "https://cdn.example.com/a.jpg", want: "https://cdn.example.com/a.jpg"},
+		{name: "absolute path", in: "/files?file_path=minio://bucket/a.jpg", want: "/files?file_path=minio://bucket/a.jpg"},
+		{name: "relative path", in: "images/a.jpg", want: ""},
+		{name: "empty", in: "", want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeServingURLFromStorageKey(tc.in)
+			if got != tc.want {
+				t.Fatalf("normalizeServingURLFromStorageKey(%q)=%q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
