@@ -67,9 +67,26 @@ func (r *ImageResolver) ResolveAndStore(
 			continue
 		}
 
-		// Find inline image bytes from the result
+		// Find image reference from parser result
 		ref, found := refMap[normalizeImageRef(refPath)]
-		if !found || len(ref.ImageData) == 0 {
+		if !found {
+			continue
+		}
+
+		// If parser already uploaded image and returned a storage key / URL,
+		// prefer direct replacement without re-upload.
+		if servingURL := normalizeServingURLFromStorageKey(ref.StorageKey); servingURL != "" {
+			images = append(images, StoredImage{
+				OriginalRef: refPath,
+				ServingURL:  servingURL,
+				MimeType:    ref.MimeType,
+			})
+			markdown = markdown[:m[4]] + servingURL + markdown[m[5]:]
+			continue
+		}
+
+		// Fallback: inline bytes returned by parser, upload via FileService.
+		if len(ref.ImageData) == 0 {
 			continue
 		}
 
@@ -101,6 +118,31 @@ func (r *ImageResolver) ResolveAndStore(
 	}
 
 	return markdown, images, nil
+}
+
+func normalizeServingURLFromStorageKey(storageKey string) string {
+	key := strings.TrimSpace(storageKey)
+	if key == "" {
+		return ""
+	}
+
+	// Already in provider scheme: directly consumable by frontend hydration.
+	if isProviderScheme(key) {
+		return key
+	}
+
+	// Public/relative URLs can be rendered directly in markdown.
+	if strings.HasPrefix(key, "http://") || strings.HasPrefix(key, "https://") {
+		return key
+	}
+	if strings.HasPrefix(key, "/") && !strings.HasPrefix(key, "//") {
+		return key
+	}
+
+	// Relative markdown refs such as images/xxx are not directly serviceable by
+	// the app backend (/files requires provider:// in file_path query), so keep
+	// unresolved here and let caller fallback to inline image_data path.
+	return ""
 }
 
 func extFromMime(mime string) string {
